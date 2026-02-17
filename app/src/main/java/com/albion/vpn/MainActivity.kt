@@ -5,90 +5,86 @@ import android.content.Intent
 import android.net.VpnService
 import android.os.Bundle
 import android.widget.*
-import android.content.pm.PackageManager
+import android.graphics.Color
+import android.graphics.drawable.GradientDrawable
 
 class MainActivity : Activity() {
 
-    private lateinit var spinner: Spinner
-    private lateinit var btnStart: Button
-    private lateinit var btnStop: Button
-    private lateinit var statusText: TextView
+    private lateinit var btnVpn: Button
+    private lateinit var logText: TextView
 
-    private var selectedPackage: String? = null
+    private var vpnRunning = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
         val layout = LinearLayout(this)
         layout.orientation = LinearLayout.VERTICAL
-        layout.setPadding(40, 60, 40, 40)
+        layout.setPadding(40, 80, 40, 40)
 
-        spinner = Spinner(this)
-        btnStart = Button(this)
-        btnStop = Button(this)
-        statusText = TextView(this)
+        btnVpn = Button(this)
+        btnVpn.text = "START"
+        btnVpn.textSize = 20f
+        btnVpn.setTextColor(Color.WHITE)
 
-        btnStart.text = "Start Monitoring"
-        btnStop.text = "Stop Monitoring"
-        statusText.text = "Status: Idle"
+        val shape = GradientDrawable()
+        shape.shape = GradientDrawable.OVAL
+        shape.setColor(Color.parseColor("#2E7D32"))
+        btnVpn.background = shape
 
-        layout.addView(spinner)
-        layout.addView(btnStart)
-        layout.addView(btnStop)
-        layout.addView(statusText)
+        val size = 350
+        btnVpn.layoutParams = LinearLayout.LayoutParams(size, size)
+
+        logText = TextView(this)
+        logText.text = "Log:\n"
+        logText.setPadding(0, 60, 0, 0)
+
+        layout.addView(btnVpn)
+        layout.addView(logText)
 
         setContentView(layout)
 
-        loadInstalledApps()
-
-        btnStart.setOnClickListener {
-            val intent = VpnService.prepare(this)
-            if (intent != null) {
-                startActivityForResult(intent, 100)
+        btnVpn.setOnClickListener {
+            if (!vpnRunning) {
+                val intent = VpnService.prepare(this)
+                if (intent != null) {
+                    startActivityForResult(intent, 100)
+                } else {
+                    startVpn()
+                }
             } else {
-                startVpn()
+                stopService(Intent(this, AlbionVpnService::class.java))
+                updateUi(false)
+                appendLog("VPN Stopped")
             }
-        }
-
-        btnStop.setOnClickListener {
-            stopService(Intent(this, AlbionVpnService::class.java))
-            statusText.text = "Status: Stopped"
-        }
-    }
-
-    private fun loadInstalledApps() {
-        val pm = packageManager
-        val apps = pm.getInstalledApplications(PackageManager.GET_META_DATA)
-
-        val appNames = mutableListOf<String>()
-        val packageMap = mutableMapOf<String, String>()
-
-        for (app in apps) {
-            if (pm.getLaunchIntentForPackage(app.packageName) != null) {
-                val name = pm.getApplicationLabel(app).toString()
-                appNames.add(name)
-                packageMap[name] = app.packageName
-            }
-        }
-
-        val adapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, appNames)
-        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
-        spinner.adapter = adapter
-
-        spinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
-            override fun onItemSelected(parent: AdapterView<*>, view: android.view.View?, position: Int, id: Long) {
-                val name = appNames[position]
-                selectedPackage = packageMap[name]
-            }
-            override fun onNothingSelected(parent: AdapterView<*>) {}
         }
     }
 
     private fun startVpn() {
-        val intent = Intent(this, AlbionVpnService::class.java)
-        intent.putExtra("TARGET_PACKAGE", selectedPackage)
-        startService(intent)
-        statusText.text = "Status: Running"
+        startService(Intent(this, AlbionVpnService::class.java))
+        updateUi(true)
+        appendLog("VPN Started - Monitoring Albion")
+    }
+
+    private fun updateUi(running: Boolean) {
+        vpnRunning = running
+
+        val shape = GradientDrawable()
+        shape.shape = GradientDrawable.OVAL
+
+        if (running) {
+            btnVpn.text = "STOP"
+            shape.setColor(Color.RED)
+        } else {
+            btnVpn.text = "START"
+            shape.setColor(Color.parseColor("#2E7D32"))
+        }
+
+        btnVpn.background = shape
+    }
+
+    private fun appendLog(message: String) {
+        logText.append("\n$message")
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
