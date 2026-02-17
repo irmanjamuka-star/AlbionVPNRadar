@@ -3,7 +3,6 @@ package com.albion.vpn
 import android.net.VpnService
 import android.os.ParcelFileDescriptor
 import java.io.FileInputStream
-import java.io.FileOutputStream
 import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.InetAddress
@@ -15,60 +14,60 @@ class AlbionVpnService : VpnService() {
     private var vpnInterface: ParcelFileDescriptor? = null
     private var running = false
 
-    override fun onStartCommand(intent: android.content.Intent?, flags: Int, startId: Int): Int {
+    override fun onStartCommand(
+        intent: android.content.Intent?,
+        flags: Int,
+        startId: Int
+    ): Int {
 
         if (running) return START_STICKY
         running = true
 
         val builder = Builder()
-            .setSession("AlbionVPNRadar")
+            .setSession("Albion Monitor")
             .addAddress("10.0.0.2", 32)
             .addRoute("0.0.0.0", 0)
-            .addDnsServer("8.8.8.8")
+            .setBlocking(false)
 
         vpnInterface = builder.establish()
 
-        startPacketLoop()
+        startPacketMonitor()
 
         return START_STICKY
     }
 
-    private fun startPacketLoop() {
+    private fun startPacketMonitor() {
         thread(start = true) {
 
             val input = FileInputStream(vpnInterface!!.fileDescriptor)
-            val output = FileOutputStream(vpnInterface!!.fileDescriptor)
-
             val mirrorSocket = DatagramSocket()
-            val buffer = ByteArray(32767)
+            val buffer = ByteArray(65535)
 
             while (running) {
 
                 val length = input.read(buffer)
-                if (length > 0) {
+                if (length <= 0) continue
 
-                    val packet = ByteBuffer.wrap(buffer, 0, length)
+                val packet = ByteBuffer.wrap(buffer, 0, length)
 
-                    if (isUdp(packet)) {
+                if (!isUdp(packet)) continue
 
-                        val dstPort = getDestinationPort(packet)
+                val dstPort = getDestinationPort(packet)
 
-                        if (dstPort == 5055 || dstPort == 5056) {
+                if (dstPort == 5055 || dstPort == 5056) {
 
-                            // Mirror to OpenRadar
-                            val mirrorPacket = DatagramPacket(
-                                buffer,
-                                length,
-                                InetAddress.getByName("127.0.0.1"),
-                                9000
-                            )
-                            mirrorSocket.send(mirrorPacket)
-                        }
-                    }
+                    val mirrorPacket = DatagramPacket(
+                        buffer,
+                        length,
+                        InetAddress.getByName("127.0.0.1"),
+                        9000
+                    )
 
-                    // Forward original packet so Albion still works
-                    output.write(buffer, 0, length)
+                    mirrorSocket.send(mirrorPacket)
                 }
+
+                // ❗ TIDAK forward manual
+                // Android akan handle routing sendiri
             }
         }
     }
@@ -80,7 +79,7 @@ class AlbionVpnService : VpnService() {
 
     private fun getDestinationPort(packet: ByteBuffer): Int {
         val ipHeaderLength = (packet.get(0).toInt() and 0x0F) * 4
-        return ((packet.getShort(ipHeaderLength + 2).toInt()) and 0xFFFF)
+        return (packet.getShort(ipHeaderLength + 2).toInt() and 0xFFFF)
     }
 
     override fun onDestroy() {
