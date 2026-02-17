@@ -25,11 +25,10 @@ class AlbionVpnService : VpnService() {
         running = true
 
         val builder = Builder()
-            .setSession("AlbionVPNRadar")
-            .addAddress("10.0.0.2", 32)
-            .addRoute("0.0.0.0", 0)
-            .addAllowedApplication("com.albiononline")
-
+    .setSession("AlbionVPNRadar")
+    .addAddress("10.0.0.2", 32)
+    .addDnsServer("8.8.8.8")
+    
         vpnInterface = builder.establish()
 
         startPacketProcessor()
