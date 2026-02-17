@@ -1,24 +1,20 @@
 package com.albion.vpn
 
-import android.app.Activity
-import android.content.BroadcastReceiver
-import android.content.Context
-import android.content.Intent
-import android.content.IntentFilter
+import android.content.*
 import android.net.VpnService
 import android.os.Bundle
 import android.view.Gravity
-import android.widget.Button
-import android.widget.LinearLayout
-import android.widget.TextView
+import android.widget.*
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
+import androidx.appcompat.app.AppCompatActivity
 
-class MainActivity : Activity() {
+class MainActivity : AppCompatActivity() {
 
     private lateinit var btnToggle: Button
     private lateinit var statusText: TextView
     private lateinit var logText: TextView
+    private lateinit var circleDrawable: GradientDrawable
 
     private var isRunning = false
 
@@ -34,34 +30,29 @@ class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Layout utama
         val layout = LinearLayout(this)
         layout.orientation = LinearLayout.VERTICAL
         layout.setPadding(40, 80, 40, 40)
         layout.gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
 
-        // Tombol bulat
         btnToggle = Button(this)
         btnToggle.text = "START"
         btnToggle.textSize = 20f
         btnToggle.setTextColor(Color.WHITE)
 
-        val shape = GradientDrawable()
-        shape.shape = GradientDrawable.OVAL
-        shape.setColor(Color.parseColor("#4CAF50")) // hijau
-        btnToggle.background = shape
+        circleDrawable = GradientDrawable()
+        circleDrawable.shape = GradientDrawable.OVAL
+        circleDrawable.setColor(Color.parseColor("#4CAF50"))
+        btnToggle.background = circleDrawable
 
-        val buttonSize = 300
-        val params = LinearLayout.LayoutParams(buttonSize, buttonSize)
-        btnToggle.layoutParams = params
+        val size = 300
+        btnToggle.layoutParams = LinearLayout.LayoutParams(size, size)
 
-        // Status
         statusText = TextView(this)
         statusText.text = "Status: Idle"
         statusText.textSize = 18f
         statusText.setPadding(0, 40, 0, 20)
 
-        // Log
         logText = TextView(this)
         logText.text = "Log:"
         logText.textSize = 14f
@@ -76,11 +67,8 @@ class MainActivity : Activity() {
         registerReceiver(logReceiver, IntentFilter("VPN_LOG"))
 
         btnToggle.setOnClickListener {
-            if (!isRunning) {
-                startVpn()
-            } else {
-                stopVpn()
-            }
+            if (!isRunning) startVpn()
+            else stopVpn()
         }
     }
 
@@ -97,8 +85,7 @@ class MainActivity : Activity() {
         stopService(Intent(this, AlbionVpnService::class.java))
         isRunning = false
         btnToggle.text = "START"
-        (btnToggle.background as GradientDrawable)
-            .setColor(Color.parseColor("#4CAF50"))
+        circleDrawable.setColor(Color.parseColor("#4CAF50"))
         statusText.text = "Status: Stopped"
         logText.append("\nVPN Stopped")
     }
@@ -108,8 +95,7 @@ class MainActivity : Activity() {
             startService(Intent(this, AlbionVpnService::class.java))
             isRunning = true
             btnToggle.text = "STOP"
-            (btnToggle.background as GradientDrawable)
-                .setColor(Color.parseColor("#F44336")) // merah
+            circleDrawable.setColor(Color.parseColor("#F44336"))
             statusText.text = "Status: Running (Albion Monitoring)"
             logText.append("\nVPN Started")
         }
