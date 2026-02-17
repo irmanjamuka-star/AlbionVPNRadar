@@ -2,97 +2,85 @@ package com.albion.vpn
 
 import android.net.VpnService
 import android.os.ParcelFileDescriptor
-import android.content.Intent
 import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.net.DatagramPacket
 import java.net.DatagramSocket
+import java.net.InetAddress
 import java.nio.ByteBuffer
+import kotlin.concurrent.thread
 
 class AlbionVpnService : VpnService() {
 
     private var vpnInterface: ParcelFileDescriptor? = null
     private var running = false
 
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+    override fun onStartCommand(intent: android.content.Intent?, flags: Int, startId: Int): Int {
 
-        val targetPackage = intent?.getStringExtra("TARGET_PACKAGE")
-
-        val builder = Builder()
-        builder.setSession("AlbionVPN")
-        builder.addAddress("10.0.0.2", 24)
-        builder.addRoute("0.0.0.0", 0)
-
-        if (targetPackage != null) {
-            try {
-                builder.addAllowedApplication(targetPackage)
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-        }
-
-        vpnInterface = builder.establish()
+        if (running) return START_STICKY
         running = true
 
-        Thread {
-            captureLoop()
-        }.start()
+        val builder = Builder()
+            .setSession("AlbionVPNRadar")
+            .addAddress("10.0.0.2", 32)
+            .addRoute("0.0.0.0", 0)
+            .addDnsServer("8.8.8.8")
+
+        vpnInterface = builder.establish()
+
+        startPacketLoop()
 
         return START_STICKY
     }
 
-    private fun captureLoop() {
+    private fun startPacketLoop() {
+        thread(start = true) {
 
-        val input = FileInputStream(vpnInterface!!.fileDescriptor)
-        val buffer = ByteArray(32767)
+            val input = FileInputStream(vpnInterface!!.fileDescriptor)
+            val output = FileOutputStream(vpnInterface!!.fileDescriptor)
 
-        val socket = DatagramSocket()
-        val radarAddress = java.net.InetAddress.getByName("127.0.0.1")
+            val mirrorSocket = DatagramSocket()
+            val buffer = ByteArray(32767)
 
-        while (running) {
+            while (running) {
 
-            val length = input.read(buffer)
-            if (length > 0) {
+                val length = input.read(buffer)
+                if (length > 0) {
 
-                val byteBuffer = ByteBuffer.wrap(buffer, 0, length)
+                    val packet = ByteBuffer.wrap(buffer, 0, length)
 
-                // ===== Parse IPv4 Header =====
-                val version = (byteBuffer.get(0).toInt() shr 4)
-                if (version != 4) continue
+                    if (isUdp(packet)) {
 
-                val protocol = byteBuffer.get(9).toInt() and 0xFF
-                if (protocol != 17) continue  // Not UDP
+                        val dstPort = getDestinationPort(packet)
 
-                val ipHeaderLength = (byteBuffer.get(0).toInt() and 0x0F) * 4
+                        if (dstPort == 5055 || dstPort == 5056) {
 
-                // ===== Parse UDP Header =====
-                val srcPort = ((buffer[ipHeaderLength].toInt() and 0xFF) shl 8) or
-                        (buffer[ipHeaderLength + 1].toInt() and 0xFF)
-
-                val dstPort = ((buffer[ipHeaderLength + 2].toInt() and 0xFF) shl 8) or
-                        (buffer[ipHeaderLength + 3].toInt() and 0xFF)
-
-                if (dstPort == 5055 || dstPort == 5056) {
-
-                    val udpHeaderLength = 8
-                    val payloadStart = ipHeaderLength + udpHeaderLength
-                    val payloadLength = length - payloadStart
-
-                    if (payloadLength > 0) {
-                        val packet = DatagramPacket(
-                            buffer,
-                            payloadStart,
-                            payloadLength,
-                            radarAddress,
-                            9000
-                        )
-                        socket.send(packet)
+                            // Mirror to OpenRadar
+                            val mirrorPacket = DatagramPacket(
+                                buffer,
+                                length,
+                                InetAddress.getByName("127.0.0.1"),
+                                9000
+                            )
+                            mirrorSocket.send(mirrorPacket)
+                        }
                     }
+
+                    // Forward original packet so Albion still works
+                    output.write(buffer, 0, length)
                 }
             }
         }
+    }
 
-        socket.close()
+    private fun isUdp(packet: ByteBuffer): Boolean {
+        val protocol = packet.get(9).toInt() and 0xFF
+        return protocol == 17
+    }
+
+    private fun getDestinationPort(packet: ByteBuffer): Int {
+        val ipHeaderLength = (packet.get(0).toInt() and 0x0F) * 4
+        return ((packet.getShort(ipHeaderLength + 2).toInt()) and 0xFFFF)
     }
 
     override fun onDestroy() {
